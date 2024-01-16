@@ -207,6 +207,18 @@ abstract contract SablierV2Lockup is
     }
 
     /// @inheritdoc ISablierV2Lockup
+    function streamedAmountOf(uint256 streamId)
+        public
+        view
+        virtual
+        override
+        notNull(streamId)
+        returns (uint128 streamedAmount)
+    {
+        streamedAmount = _streamedAmountOf(streamId);
+    }
+
+    /// @inheritdoc ISablierV2Lockup
     function wasCanceled(uint256 streamId) public view override notNull(streamId) returns (bool result) {
         result = _streams[streamId].wasCanceled;
     }
@@ -523,7 +535,22 @@ abstract contract SablierV2Lockup is
     }
 
     /// @dev See the documentation for the user-facing functions that call this internal function.
-    function _withdrawableAmountOf(uint256 streamId) internal view virtual returns (uint128);
+    function _streamedAmountOf(uint256 streamId) internal view returns (uint128) {
+        Lockup.Amounts memory amounts = _streams[streamId].amounts;
+
+        if (_streams[streamId].isDepleted) {
+            return amounts.withdrawn;
+        } else if (_streams[streamId].wasCanceled) {
+            return amounts.deposited - amounts.refunded;
+        }
+
+        return _calculateStreamedAmount(streamId);
+    }
+
+    /// @dev See the documentation for the user-facing functions that call this internal function.
+    function _withdrawableAmountOf(uint256 streamId) internal view returns (uint128) {
+        return _streamedAmountOf(streamId) - _streams[streamId].amounts.withdrawn;
+    }
 
     /*//////////////////////////////////////////////////////////////////////////
                            INTERNAL NON-CONSTANT FUNCTIONS

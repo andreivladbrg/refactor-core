@@ -7,8 +7,8 @@ import { ERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import { UD60x18, ud } from "@prb/math/src/UD60x18.sol";
 
 import { SablierV2Lockup } from "./abstracts/SablierV2Lockup.sol";
+import { SablierV2Lockup } from "./abstracts/SablierV2Lockup.sol";
 import { ISablierV2Comptroller } from "./interfaces/ISablierV2Comptroller.sol";
-import { ISablierV2Lockup } from "./interfaces/ISablierV2Lockup.sol";
 import { ISablierV2LockupLinear } from "./interfaces/ISablierV2LockupLinear.sol";
 import { ISablierV2NFTDescriptor } from "./interfaces/ISablierV2NFTDescriptor.sol";
 import { Errors } from "./libraries/Errors.sol";
@@ -107,15 +107,13 @@ contract SablierV2LockupLinear is
         }
     }
 
-    /// @inheritdoc ISablierV2LockupLinear
     function streamedAmountOf(uint256 streamId)
         public
         view
-        override(ISablierV2Lockup, ISablierV2LockupLinear)
-        notNull(streamId)
-        returns (uint128 streamedAmount)
+        override(SablierV2Lockup, ISablierV2LockupLinear)
+        returns (uint128)
     {
-        streamedAmount = _streamedAmountOf(streamId);
+        return super.streamedAmountOf(streamId);
     }
 
     /*//////////////////////////////////////////////////////////////////////////
@@ -212,24 +210,6 @@ contract SablierV2LockupLinear is
             // Cast the streamed amount to uint128. This is safe due to the check above.
             return uint128(streamedAmount.intoUint256());
         }
-    }
-
-    /// @dev See the documentation for the user-facing functions that call this internal function.
-    function _streamedAmountOf(uint256 streamId) internal view returns (uint128) {
-        Lockup.Amounts memory amounts = _streams[streamId].amounts;
-
-        if (_streams[streamId].isDepleted) {
-            return amounts.withdrawn;
-        } else if (_streams[streamId].wasCanceled) {
-            return amounts.deposited - amounts.refunded;
-        }
-
-        return _calculateStreamedAmount(streamId);
-    }
-
-    /// @dev See the documentation for the user-facing functions that call this internal function.
-    function _withdrawableAmountOf(uint256 streamId) internal view override returns (uint128) {
-        return _streamedAmountOf(streamId) - _streams[streamId].amounts.withdrawn;
     }
 
     /*//////////////////////////////////////////////////////////////////////////

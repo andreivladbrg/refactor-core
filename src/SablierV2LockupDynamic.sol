@@ -11,7 +11,6 @@ import { UD60x18 } from "@prb/math/src/UD60x18.sol";
 
 import { SablierV2Lockup } from "./abstracts/SablierV2Lockup.sol";
 import { ISablierV2Comptroller } from "./interfaces/ISablierV2Comptroller.sol";
-import { ISablierV2Lockup } from "./interfaces/ISablierV2Lockup.sol";
 import { ISablierV2LockupDynamic } from "./interfaces/ISablierV2LockupDynamic.sol";
 import { ISablierV2NFTDescriptor } from "./interfaces/ISablierV2NFTDescriptor.sol";
 import { Helpers } from "./libraries/Helpers.sol";
@@ -123,11 +122,10 @@ contract SablierV2LockupDynamic is
     function streamedAmountOf(uint256 streamId)
         public
         view
-        override(ISablierV2Lockup, ISablierV2LockupDynamic)
-        notNull(streamId)
-        returns (uint128 streamedAmount)
+        override(SablierV2Lockup, ISablierV2LockupDynamic)
+        returns (uint128)
     {
-        streamedAmount = _streamedAmountOf(streamId);
+        return super.streamedAmountOf(streamId);
     }
 
     /*//////////////////////////////////////////////////////////////////////////
@@ -198,34 +196,7 @@ contract SablierV2LockupDynamic is
         }
     }
 
-    /// @dev Calculates the streamed amount for a stream with multiple segments.
-    ///
-    /// Notes:
-    ///
-    /// 1. Normalization to 18 decimals is not needed because there is no mix of amounts with different decimals.
-    /// 2. The stream's start time must be in the past so that the calculations below do not overflow.
-    /// 3. The stream's end time must be in the future so that the loop below does not panic with an "index out of
-    /// bounds" error.
-    function _calculateStreamedAmountForMultipleSegments(uint256 streamId) internal view returns (uint128) {
-        unchecked {
-            uint40 currentTime = uint40(block.timestamp);
-            LockupDynamic.Segment[] memory segments = _segments[streamId];
-
-            // Sum the amounts in all segments that precede the current time.
-            uint128 previousSegmentAmounts;
-            uint40 currentSegmentMilestone = segments[0].milestone;
-            uint256 index = 0;
-            while (currentSegmentMilestone < currentTime) {
-                previousSegmentAmounts += segments[index].amount;
-                index += 1;
-                currentSegmentMilestone = segments[index].milestone;
-            }
-
-            return _calculate(streamId, index, previousSegmentAmounts);
-        }
-    }
-
-    function _calculate(
+    function _calculateStreamedAmountForCurrentSegment(
         uint256 streamId,
         uint256 index,
         uint128 previousSegmentAmounts
@@ -277,6 +248,34 @@ contract SablierV2LockupDynamic is
         return previousSegmentAmounts + uint128(segmentStreamedAmount.intoUint256());
     }
 
+    /// @dev Calculates the streamed amount for a stream with multiple segments.
+    ///
+    /// Notes:
+    ///
+    /// 1. Normalization to 18 decimals is not needed because there is no mix of amounts with different decimals.
+    /// 2. The stream's start time must be in the past so that the calculations below do not overflow.
+    /// 3. The stream's end time must be in the future so that the loop below does not panic with an "index out of
+    /// bounds" error.
+    function _calculateStreamedAmountForMultipleSegments(uint256 streamId) internal view returns (uint128) {
+        unchecked {
+            uint40 currentTime = uint40(block.timestamp);
+            LockupDynamic.Segment[] memory segments = _segments[streamId];
+
+            // Sum the amounts in all segments that precede the current time.
+            uint128 previousSegmentAmounts;
+            uint40 currentSegmentMilestone = segments[0].milestone;
+            uint256 index = 0;
+            while (currentSegmentMilestone < currentTime) {
+                previousSegmentAmounts += segments[index].amount;
+                index += 1;
+                currentSegmentMilestone = segments[index].milestone;
+            }
+
+            // Calculate the streamed amount for the current segment.
+            return _calculateStreamedAmountForCurrentSegment(streamId, index, previousSegmentAmounts);
+        }
+    }
+
     /// @dev Calculates the streamed amount for a a stream with one segment. Normalization to 18 decimals is not
     /// needed because there is no mix of amounts with different decimals.
     function _calculateStreamedAmountForOneSegment(uint256 streamId) internal view returns (uint128) {
@@ -306,24 +305,6 @@ contract SablierV2LockupDynamic is
             // Cast the streamed amount to uint128. This is safe due to the check above.
             return uint128(streamedAmount.intoUint256());
         }
-    }
-
-    /// @dev See the documentation for the user-facing functions that call this internal function.
-    function _streamedAmountOf(uint256 streamId) internal view returns (uint128) {
-        Lockup.Amounts memory amounts = _streams[streamId].amounts;
-
-        if (_streams[streamId].isDepleted) {
-            return amounts.withdrawn;
-        } else if (_streams[streamId].wasCanceled) {
-            return amounts.deposited - amounts.refunded;
-        }
-
-        return _calculateStreamedAmount(streamId);
-    }
-
-    /// @dev See the documentation for the user-facing functions that call this internal function.
-    function _withdrawableAmountOf(uint256 streamId) internal view override returns (uint128) {
-        return _streamedAmountOf(streamId) - _streams[streamId].amounts.withdrawn;
     }
 
     /*//////////////////////////////////////////////////////////////////////////
