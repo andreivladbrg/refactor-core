@@ -57,7 +57,7 @@ interface ISablierV2LockupLinear is ISablierV2Lockup {
     /// @notice Retrieves the stream entity.
     /// @dev Reverts if `streamId` references a null stream.
     /// @param streamId The stream id for the query.
-    function getStream(uint256 streamId) external view returns (LockupLinear.Stream memory stream);
+    function getStream(uint256 streamId) external view returns (Lockup.Stream memory stream);
 
     /// @notice Calculates the amount streamed to the recipient, denoted in units of the asset's decimals.
     ///

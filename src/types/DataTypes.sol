@@ -66,6 +66,34 @@ library Lockup {
         CANCELED,
         DEPLETED
     }
+
+    struct CreateParams {
+        address sender;
+        address recipient;
+        CreateAmounts createAmounts;
+        IERC20 asset;
+        bool cancelable;
+        bool transferable;
+        uint40 startTime;
+        uint40 endTime;
+        Broker broker;
+    }
+
+    struct Stream {
+        // slot 0
+        address sender;
+        uint40 startTime;
+        uint40 endTime;
+        bool isCancelable;
+        bool wasCanceled;
+        // slot 1
+        IERC20 asset;
+        bool isDepleted;
+        bool isStream;
+        bool isTransferable;
+        // slot 2 and 3
+        Lockup.Amounts amounts;
+    }
 }
 
 /// @notice Namespace for the structs used in {SablierV2LockupDynamic}.
