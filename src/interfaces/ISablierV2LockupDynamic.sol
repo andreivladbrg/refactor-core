@@ -35,7 +35,7 @@ interface ISablierV2LockupDynamic is ISablierV2Lockup {
         bool cancelable,
         bool transferable,
         LockupDynamic.Segment[] segments,
-        uint40 startTime,
+        LockupDynamic.Range range,
         address broker
     );
 
@@ -91,7 +91,7 @@ interface ISablierV2LockupDynamic is ISablierV2Lockup {
     //////////////////////////////////////////////////////////////////////////*/
 
     /// @notice Creates a stream by setting the start time to `block.timestamp`, and the end time to the sum of
-    /// `block.timestamp` and all specified time durations. The segment timestampts are derived from these
+    /// `block.timestamp` and all specified time durations. The segment timestamps are derived from these
     /// durations. The stream is funded by `msg.sender` and is wrapped in an ERC-721 NFT.
     ///
     /// @dev Emits a {Transfer} and {CreateLockupDynamicStream} event.
@@ -105,13 +105,13 @@ interface ISablierV2LockupDynamic is ISablierV2Lockup {
         external
         returns (uint256 streamId);
 
-    /// @notice Creates a stream with the provided segment timestampts, implying the end time from the last timestampt.
+    /// @notice Creates a stream with the provided segment timestamps, implying the end time from the last timestamp.
     /// The stream is funded by `msg.sender` and is wrapped in an ERC-721 NFT.
     ///
     /// @dev Emits a {Transfer} and {CreateLockupDynamicStream} event.
     ///
     /// Notes:
-    /// - As long as the segment timestampts are arranged in ascending order, it is not an error for some
+    /// - As long as the segment timestamps are arranged in ascending order, it is not an error for some
     /// of them to be in the past.
     ///
     /// Requirements:
@@ -119,9 +119,9 @@ interface ISablierV2LockupDynamic is ISablierV2Lockup {
     /// - `params.totalAmount` must be greater than zero.
     /// - If set, `params.broker.fee` must not be greater than `MAX_FEE`.
     /// - `params.segments` must have at least one segment, but not more than `MAX_SEGMENT_COUNT`.
-    /// - `params.startTime` must be less than the first segment's timestampt.
-    /// - The segment timestampts must be arranged in ascending order.
-    /// - The last segment timestampt (i.e. the stream's end time) must be in the future.
+    /// - `params.startTime` must be less than the first segment's timestamp.
+    /// - The segment timestamps must be arranged in ascending order.
+    /// - The last segment timestamp (i.e. the stream's end time) must be in the future.
     /// - The sum of the segment amounts must equal the deposit amount.
     /// - `params.recipient` must not be the zero address.
     /// - `msg.sender` must have allowed this contract to spend at least `params.totalAmount` assets.

@@ -3,7 +3,7 @@ pragma solidity >=0.8.22;
 
 import { UD60x18, ud } from "@prb/math/src/UD60x18.sol";
 
-import { Lockup, LockupDynamic } from "../types/DataTypes.sol";
+import { Lockup, LockupDynamic, LockupLinear } from "../types/DataTypes.sol";
 import { Errors } from "./Errors.sol";
 
 /// @title Helpers
@@ -53,65 +53,23 @@ library Helpers {
 
         // Calculate the deposit amount (the amount to stream, net of fees).
         amounts.deposit = totalAmount - amounts.protocolFee - amounts.brokerFee;
-
-        if (amounts.deposit == 0) {
-            revert Errors.SablierV2Lockup_DepositAmountZero();
-        }
     }
 
-    /// @dev Checks that the segment array counts match, and then adjusts the segments by calculating the timestampts.
-    function checkDurationsAndCalculateTimestamps(LockupDynamic.SegmentWithDuration[] memory segments)
-        internal
-        view
-        returns (LockupDynamic.Segment[] memory segmentsWithTimestamps)
-    {
-        uint256 segmentCount = segments.length;
-        segmentsWithTimestamps = new LockupDynamic.Segment[](segmentCount);
-
-        // Make the current time the stream's start time.
-        uint40 startTime = uint40(block.timestamp);
-
-        // It is safe to use unchecked arithmetic because {_createWithTimestamp} will nonetheless check the soundness
-        // of the calculated segment timestampts.
-        unchecked {
-            // Precompute the first segment because of the need to add the start time to the first segment duration.
-            segmentsWithTimestamps[0] = LockupDynamic.Segment({
-                amount: segments[0].amount,
-                exponent: segments[0].exponent,
-                timestampt: startTime + segments[0].duration
-            });
-
-            // Copy the segment amounts and exponents, and calculate the segment timestampts.
-            for (uint256 i = 1; i < segmentCount; ++i) {
-                segmentsWithTimestamps[i] = LockupDynamic.Segment({
-                    amount: segments[i].amount,
-                    exponent: segments[i].exponent,
-                    timestampt: segmentsWithTimestamps[i - 1].timestampt + segments[i].duration
-                });
-            }
-        }
-    }
-
-    /*//////////////////////////////////////////////////////////////////////////
-                             PRIVATE CONSTANT FUNCTIONS
-    //////////////////////////////////////////////////////////////////////////*/
-
-    /// @dev Checks that:
-    ///
-    /// 1. The first timestampt is strictly greater than the start time.
-    /// 2. The timestampts are ordered chronologically.
-    /// 3. There are no duplicate timestampts.
-    /// 4. The deposit amount is equal to the sum of all segment amounts.
-    function checkSegments(
-        LockupDynamic.Segment[] memory segments,
+    /// @dev Checks the parameters of the {SablierV2LockupDynamic-_createWithTimestamps} function.
+    function checkCreateWithTimestamps(
         uint128 depositAmount,
-        uint40 startTime,
-        uint256 maxSegmentCount
+        LockupDynamic.Segment[] memory segments,
+        uint256 maxSegmentCount,
+        uint40 startTime
     )
         internal
-        pure
-        returns (uint40)
+        view
     {
+        // Checks: the deposit amount is not zero.
+        if (depositAmount == 0) {
+            revert Errors.SablierV2Lockup_DepositAmountZero();
+        }
+
         // Checks: the segment count is not zero.
         uint256 segmentCount = segments.length;
         if (segmentCount == 0) {
@@ -123,10 +81,89 @@ library Helpers {
             revert Errors.SablierV2LockupDynamic_SegmentCountTooHigh(segmentCount);
         }
 
-        // Checks: the start time is strictly less than the first segment timestampt.
-        if (startTime >= segments[0].timestampt) {
+        // Checks: requirements of segments variables.
+        _checkSegments(segments, depositAmount, startTime);
+    }
+
+    /// @dev Checks the parameters of the {SablierV2LockupLinear-_createWithTimestamps} function.
+    function checkCreateWithTimestamps(uint128 depositAmount, LockupLinear.Range memory range) internal view {
+        // Checks: the deposit amount is not zero.
+        if (depositAmount == 0) {
+            revert Errors.SablierV2Lockup_DepositAmountZero();
+        }
+
+        // Checks: the start time is less than or equal to the cliff time.
+        if (range.start > range.cliff) {
+            revert Errors.SablierV2LockupLinear_StartTimeGreaterThanCliffTime(range.start, range.cliff);
+        }
+
+        // Checks: the cliff time is strictly less than the end time.
+        if (range.cliff >= range.end) {
+            revert Errors.SablierV2LockupLinear_CliffTimeNotLessThanEndTime(range.cliff, range.end);
+        }
+
+        // Checks: the end time is in the future.
+        uint40 currentTime = uint40(block.timestamp);
+        if (currentTime >= range.end) {
+            revert Errors.SablierV2Lockup_EndTimeNotInTheFuture(currentTime, range.end);
+        }
+    }
+
+    /// @dev Checks that the segment array counts match, and then adjusts the segments by calculating the timestamps.
+    function checkDurationsAndCalculateTimestamps(LockupDynamic.SegmentWithDuration[] memory segments)
+        internal
+        view
+        returns (LockupDynamic.Segment[] memory segmentsWithTimestamps)
+    {
+        uint256 segmentCount = segments.length;
+        segmentsWithTimestamps = new LockupDynamic.Segment[](segmentCount);
+
+        // Make the current time the stream's start time.
+        uint40 startTime = uint40(block.timestamp);
+
+        // It is safe to use unchecked arithmetic because {_createWithTimestamps} will nonetheless check the soundness
+        // of the calculated segment timestamps.
+        unchecked {
+            // Precompute the first segment because of the need to add the start time to the first segment duration.
+            segmentsWithTimestamps[0] = LockupDynamic.Segment({
+                amount: segments[0].amount,
+                exponent: segments[0].exponent,
+                timestamp: startTime + segments[0].duration
+            });
+
+            // Copy the segment amounts and exponents, and calculate the segment timestamps.
+            for (uint256 i = 1; i < segmentCount; ++i) {
+                segmentsWithTimestamps[i] = LockupDynamic.Segment({
+                    amount: segments[i].amount,
+                    exponent: segments[i].exponent,
+                    timestamp: segmentsWithTimestamps[i - 1].timestamp + segments[i].duration
+                });
+            }
+        }
+    }
+
+    /*//////////////////////////////////////////////////////////////////////////
+                             PRIVATE CONSTANT FUNCTIONS
+    //////////////////////////////////////////////////////////////////////////*/
+
+    /// @dev Checks that:
+    ///
+    /// 1. The first timestamp is strictly greater than the start time.
+    /// 2. The timestamps are ordered chronologically.
+    /// 3. There are no duplicate timestamps.
+    /// 4. The deposit amount is equal to the sum of all segment amounts.
+    function _checkSegments(
+        LockupDynamic.Segment[] memory segments,
+        uint128 depositAmount,
+        uint40 startTime
+    )
+        private
+        view
+    {
+        // Checks: the start time is strictly less than the first segment timestamp.
+        if (startTime >= segments[0].timestamp) {
             revert Errors.SablierV2LockupDynamic_StartTimeNotLessThanFirstSegmentTimestamp(
-                startTime, segments[0].timestampt
+                startTime, segments[0].timestamp
             );
         }
 
@@ -138,21 +175,29 @@ library Helpers {
         // Iterate over the segments to:
         //
         // 1. Calculate the sum of all segment amounts.
-        // 2. Check that the timestampts are ordered.
-        for (uint256 index = 0; index < segmentCount; ++index) {
+        // 2. Check that the timestamps are ordered.
+        uint256 count = segments.length;
+        for (uint256 index = 0; index < count; ++index) {
             // Add the current segment amount to the sum.
             segmentAmountsSum += segments[index].amount;
 
-            // Checks: the current timestampt is strictly greater than the previous timestampt.
-            currentTimestamp = segments[index].timestampt;
+            // Checks: the current timestamp is strictly greater than the previous timestamp.
+            currentTimestamp = segments[index].timestamp;
             if (currentTimestamp <= previousTimestamp) {
                 revert Errors.SablierV2LockupDynamic_SegmentTimestampsNotOrdered(
                     index, previousTimestamp, currentTimestamp
                 );
             }
 
-            // Make the current timestampt the previous timestampt of the next loop iteration.
+            // Make the current timestamp the previous timestamp of the next loop iteration.
             previousTimestamp = currentTimestamp;
+        }
+
+        // Checks: the last timestamp is in the future.
+        // When the loop exits, the current timestamp is the last timestamp, i.e. the stream's end time.
+        uint40 currentTime = uint40(block.timestamp);
+        if (currentTime >= currentTimestamp) {
+            revert Errors.SablierV2Lockup_EndTimeNotInTheFuture(currentTime, currentTimestamp);
         }
 
         // Checks: the deposit amount is equal to the segment amounts sum.
@@ -161,7 +206,5 @@ library Helpers {
                 depositAmount, segmentAmountsSum
             );
         }
-
-        return currentTimestamp;
     }
 }

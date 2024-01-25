@@ -11,7 +11,6 @@ import { SablierV2Lockup } from "./abstracts/SablierV2Lockup.sol";
 import { ISablierV2Comptroller } from "./interfaces/ISablierV2Comptroller.sol";
 import { ISablierV2LockupLinear } from "./interfaces/ISablierV2LockupLinear.sol";
 import { ISablierV2NFTDescriptor } from "./interfaces/ISablierV2NFTDescriptor.sol";
-import { Errors } from "./libraries/Errors.sol";
 import { Helpers } from "./libraries/Helpers.sol";
 import { Lockup, LockupLinear } from "./types/DataTypes.sol";
 
@@ -132,15 +131,15 @@ contract SablierV2LockupLinear is
         range.start = uint40(block.timestamp);
 
         // Calculate the cliff time and the end time. It is safe to use unchecked arithmetic because
-        // {_createWithTimestampts} will nonetheless check that the end time is greater than the cliff time,
+        // {_createWithTimestamps} will nonetheless check that the end time is greater than the cliff time,
         // and also that the cliff time is greater than or equal to the start time.
         unchecked {
             range.cliff = range.start + params.durations.cliff;
             range.end = range.start + params.durations.total;
         }
         // Checks, Effects and Interactions: create the stream.
-        streamId = _createWithTimestampts(
-            LockupLinear.CreateWithTimestampts({
+        streamId = _createWithTimestamps(
+            LockupLinear.CreateWithTimestamps({
                 sender: params.sender,
                 recipient: params.recipient,
                 totalAmount: params.totalAmount,
@@ -154,14 +153,14 @@ contract SablierV2LockupLinear is
     }
 
     /// @inheritdoc ISablierV2LockupLinear
-    function createWithTimestampts(LockupLinear.CreateWithTimestampts calldata params)
+    function createWithTimestamps(LockupLinear.CreateWithTimestamps calldata params)
         external
         override
         noDelegateCall
         returns (uint256 streamId)
     {
         // Checks, Effects and Interactions: create the stream.
-        streamId = _createWithTimestampts(params);
+        streamId = _createWithTimestamps(params);
     }
 
     /*//////////////////////////////////////////////////////////////////////////
@@ -216,20 +215,11 @@ contract SablierV2LockupLinear is
                            INTERNAL NON-CONSTANT FUNCTIONS
     //////////////////////////////////////////////////////////////////////////*/
 
-    function _createWithTimestampts(LockupLinear.CreateWithTimestampts memory params)
+    /// @dev See the documentation for the user-facing functions that call this internal function.
+    function _createWithTimestamps(LockupLinear.CreateWithTimestamps memory params)
         internal
         returns (uint256 streamId)
     {
-        // Checks: the start time is less than or equal to the cliff time.
-        if (params.range.start > params.range.cliff) {
-            revert Errors.SablierV2LockupLinear_StartTimeGreaterThanCliffTime(params.range.start, params.range.cliff);
-        }
-
-        // Checks: the cliff time is strictly less than the end time.
-        if (params.range.cliff >= params.range.end) {
-            revert Errors.SablierV2LockupLinear_CliffTimeNotLessThanEndTime(params.range.cliff, params.range.end);
-        }
-
         // Safe Interactions: query the protocol fee. This is safe because it's a known Sablier contract that does
         // not call other unknown contracts.
         UD60x18 protocolFee = comptroller.protocolFees(params.asset);
@@ -238,21 +228,53 @@ contract SablierV2LockupLinear is
         Lockup.CreateAmounts memory createAmounts =
             Helpers.checkAndCalculateFees(params.totalAmount, protocolFee, params.broker.fee, MAX_FEE);
 
-        streamId = _create(
-            Lockup.CreateParams({
-                sender: params.sender,
-                recipient: params.recipient,
-                createAmounts: createAmounts,
-                asset: params.asset,
-                cancelable: params.cancelable,
-                transferable: params.transferable,
-                startTime: params.range.start,
-                endTime: params.range.end,
-                broker: params.broker
-            })
-        );
+        // Checks: validate the user-provided parameters.
+        Helpers.checkCreateWithTimestamps(createAmounts.deposit, params.range);
 
+        // Load the stream id.
+        streamId = nextStreamId;
+
+        // Effects: create the stream.
+        _streams[streamId] = Lockup.Stream({
+            amounts: Lockup.Amounts({ deposited: createAmounts.deposit, refunded: 0, withdrawn: 0 }),
+            asset: params.asset,
+            endTime: params.range.end,
+            isCancelable: params.cancelable,
+            isTransferable: params.transferable,
+            isDepleted: false,
+            isStream: true,
+            sender: params.sender,
+            startTime: params.range.start,
+            wasCanceled: false
+        });
+
+        // Effects: set the cliff time.
         _cliffs[streamId] = params.range.cliff;
+
+        // Effects: bump the next stream id and record the protocol fee.
+        // Using unchecked arithmetic because these calculations cannot realistically overflow, ever.
+        unchecked {
+            nextStreamId = streamId + 1;
+            protocolRevenues[params.asset] = protocolRevenues[params.asset] + createAmounts.protocolFee;
+        }
+
+        // Effects: mint the NFT to the recipient.
+        _mint({ to: params.recipient, tokenId: streamId });
+
+        // Interactions: transfer the deposit and the protocol fee.
+        // Using unchecked arithmetic because the deposit and the protocol fee are bounded by the total amount.
+        unchecked {
+            params.asset.safeTransferFrom({
+                from: msg.sender,
+                to: address(this),
+                value: createAmounts.deposit + createAmounts.protocolFee
+            });
+        }
+
+        // Interactions: pay the broker fee, if not zero.
+        if (createAmounts.brokerFee > 0) {
+            params.asset.safeTransferFrom({ from: msg.sender, to: params.broker.account, value: createAmounts.brokerFee });
+        }
 
         // Log the newly created stream.
         emit ISablierV2LockupLinear.CreateLockupLinearStream({

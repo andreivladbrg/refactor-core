@@ -92,7 +92,7 @@ interface ISablierV2LockupLinear is ISablierV2Lockup {
     /// @dev Emits a {Transfer} and {CreateLockupLinearStream} event.
     ///
     /// Requirements:
-    /// - All requirements in {createWithTimestampts} must be met for the calculated parameters.
+    /// - All requirements in {createWithTimestamps} must be met for the calculated parameters.
     ///
     /// @param params Struct encapsulating the function parameters, which are documented in {DataTypes}.
     /// @return streamId The id of the newly created stream.
@@ -120,7 +120,7 @@ interface ISablierV2LockupLinear is ISablierV2Lockup {
     ///
     /// @param params Struct encapsulating the function parameters, which are documented in {DataTypes}.
     /// @return streamId The id of the newly created stream.
-    function createWithTimestampts(LockupLinear.CreateWithTimestampts calldata params)
+    function createWithTimestamps(LockupLinear.CreateWithTimestamps calldata params)
         external
         returns (uint256 streamId);
 }

@@ -108,7 +108,7 @@ library LockupDynamic {
     /// @param cancelable Indicates if the stream is cancelable.
     /// @param transferable Indicates if the stream NFT is transferable.
     /// @param segments Segments with durations used to compose the custom streaming curve. Timestamps are calculated by
-    /// starting from `block.timestamp` and adding each duration to the previous timestampt.
+    /// starting from `block.timestamp` and adding each duration to the previous timestamp.
     /// @param broker Struct containing (i) the address of the broker assisting in creating the stream, and (ii) the
     /// percentage fee paid to the broker from `totalAmount`, denoted as a fixed-point number. Both can be set to zero.
     struct CreateWithDurations {
@@ -159,12 +159,12 @@ library LockupDynamic {
     /// @notice Segment struct used in the Lockup Dynamic stream.
     /// @param amount The amount of assets to be streamed in this segment, denoted in units of the asset's decimals.
     /// @param exponent The exponent of this segment, denoted as a fixed-point number.
-    /// @param timestampt The Unix timestamp indicating this segment's end.
+    /// @param timestamp The Unix timestamp indicating this segment's end.
     struct Segment {
         // slot 0
         uint128 amount;
         UD2x18 exponent;
-        uint40 timestampt;
+        uint40 timestamp;
     }
 
     /// @notice Segment struct used at runtime in {SablierV2LockupDynamic.createWithDurations}.
@@ -235,7 +235,7 @@ library LockupLinear {
         Broker broker;
     }
 
-    /// @notice Struct encapsulating the parameters for the {SablierV2LockupLinear.createWithTimestampts} function.
+    /// @notice Struct encapsulating the parameters for the {SablierV2LockupLinear.createWithTimestamps} function.
     /// @param sender The address streaming the assets, with the ability to cancel the stream. It doesn't have to be the
     /// same as `msg.sender`.
     /// @param recipient The address receiving the assets.
@@ -248,7 +248,7 @@ library LockupLinear {
     /// timestamps.
     /// @param broker Struct containing (i) the address of the broker assisting in creating the stream, and (ii) the
     /// percentage fee paid to the broker from `totalAmount`, denoted as a fixed-point number. Both can be set to zero.
-    struct CreateWithTimestampts {
+    struct CreateWithTimestamps {
         address sender;
         address recipient;
         uint128 totalAmount;

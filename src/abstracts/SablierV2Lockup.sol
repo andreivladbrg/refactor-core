@@ -6,7 +6,6 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { IERC4906 } from "@openzeppelin/contracts/interfaces/IERC4906.sol";
 import { ERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import { IERC721Metadata } from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
-import { UD60x18 } from "@prb/math/src/UD60x18.sol";
 
 import { ISablierV2Comptroller } from "../interfaces/ISablierV2Comptroller.sol";
 import { ISablierV2Lockup } from "../interfaces/ISablierV2Lockup.sol";
@@ -14,7 +13,6 @@ import { ISablierV2NFTDescriptor } from "../interfaces/ISablierV2NFTDescriptor.s
 import { ISablierV2Recipient } from "../interfaces/hooks/ISablierV2Recipient.sol";
 import { ISablierV2Sender } from "../interfaces/hooks/ISablierV2Sender.sol";
 import { Errors } from "../libraries/Errors.sol";
-import { Helpers } from "../libraries/Helpers.sol";
 import { Lockup } from "../types/DataTypes.sol";
 import { SablierV2Base } from "./SablierV2Base.sol";
 
@@ -348,21 +346,6 @@ abstract contract SablierV2Lockup is
             revert Errors.SablierV2Lockup_StreamDepleted(streamId);
         }
 
-        bool isCallerStreamSender = _isCallerStreamSender(streamId);
-
-        // Checks: `msg.sender` is the stream's sender, the stream's recipient, or an approved third party.
-        if (!isCallerStreamSender && !_isCallerStreamRecipientOrApproved(streamId)) {
-            revert Errors.SablierV2Lockup_Unauthorized(streamId, msg.sender);
-        }
-
-        // Retrieve the recipient from storage.
-        address recipient = _ownerOf(streamId);
-
-        // Checks: if `msg.sender` is the stream's sender, the withdrawal address must be the recipient.
-        if (isCallerStreamSender && to != recipient) {
-            revert Errors.SablierV2Lockup_InvalidSenderWithdrawal(streamId, msg.sender, to);
-        }
-
         // Checks: the withdrawal address is not zero.
         if (to == address(0)) {
             revert Errors.SablierV2Lockup_WithdrawToZeroAddress();
@@ -371,6 +354,15 @@ abstract contract SablierV2Lockup is
         // Checks: the withdraw amount is not zero.
         if (amount == 0) {
             revert Errors.SablierV2Lockup_WithdrawAmountZero(streamId);
+        }
+
+        // Retrieve the recipient from storage.
+        address recipient = _ownerOf(streamId);
+
+        // Checks: if `msg.sender` is neither the stream's recipient nor an approved third party, the withdrawal address
+        // must be the recipient.
+        if (to != recipient && !_isCallerStreamRecipientOrApproved(streamId)) {
+            revert Errors.SablierV2Lockup_WithdrawalAddressNotRecipient(streamId, msg.sender, to);
         }
 
         // Checks: the withdraw amount is not greater than the withdrawable amount.
@@ -555,60 +547,6 @@ abstract contract SablierV2Lockup is
     /*//////////////////////////////////////////////////////////////////////////
                            INTERNAL NON-CONSTANT FUNCTIONS
     //////////////////////////////////////////////////////////////////////////*/
-
-    function _create(Lockup.CreateParams memory params) internal returns (uint256 streamId) {
-        // Checks: the end time is in the future.
-        uint40 currentTime = uint40(block.timestamp);
-        if (currentTime >= params.endTime) {
-            revert Errors.SablierV2Lockup_EndTimeNotInTheFuture(currentTime, params.endTime);
-        }
-
-        // Load the stream id.
-        streamId = nextStreamId;
-
-        // Effects: create the stream.
-        _streams[streamId] = Lockup.Stream({
-            sender: params.sender,
-            startTime: params.startTime,
-            endTime: params.endTime,
-            isCancelable: params.cancelable,
-            wasCanceled: false,
-            asset: params.asset,
-            isDepleted: false,
-            isStream: true,
-            isTransferable: params.transferable,
-            amounts: Lockup.Amounts({ deposited: params.createAmounts.deposit, withdrawn: 0, refunded: 0 })
-        });
-
-        // Effects: bump the next stream id and record the protocol fee.
-        // Using unchecked arithmetic because these calculations cannot realistically overflow, ever.
-        unchecked {
-            nextStreamId = streamId + 1;
-            protocolRevenues[params.asset] = protocolRevenues[params.asset] + params.createAmounts.protocolFee;
-        }
-
-        // Effects: mint the NFT to the recipient.
-        _mint({ to: params.recipient, tokenId: streamId });
-
-        // Interactions: transfer the deposit and the protocol fee.
-        // Using unchecked arithmetic because the deposit and the protocol fee are bounded by the total amount.
-        unchecked {
-            params.asset.safeTransferFrom({
-                from: msg.sender,
-                to: address(this),
-                value: params.createAmounts.deposit + params.createAmounts.protocolFee
-            });
-        }
-
-        // Interactions: pay the broker fee, if not zero.
-        if (params.createAmounts.brokerFee > 0) {
-            params.asset.safeTransferFrom({
-                from: msg.sender,
-                to: params.broker.account,
-                value: params.createAmounts.brokerFee
-            });
-        }
-    }
 
     /// @dev See the documentation for the user-facing functions that call this internal function.
     function _cancel(uint256 streamId) internal {

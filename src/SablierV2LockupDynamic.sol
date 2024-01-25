@@ -196,83 +196,61 @@ contract SablierV2LockupDynamic is
         }
     }
 
-    function _calculateStreamedAmountForCurrentSegment(
-        uint256 streamId,
-        uint256 index,
-        uint128 previousSegmentAmounts
-    )
-        internal
-        view
-        returns (uint128)
-    {
-        uint40 currentTime = uint40(block.timestamp);
-
-        // After exiting the loop, the current segment is at `index`.
-        SD59x18 currentSegmentAmount = _segments[streamId][index].amount.intoSD59x18();
-        SD59x18 currentSegmentExponent = _segments[streamId][index].exponent.intoSD59x18();
-        uint40 currentSegmentTimestamp = _segments[streamId][index].timestampt;
-
-        uint40 previousTimestamp;
-        if (index > 0) {
-            // When the current segment's index is greater than or equal to 1, it implies that the segment is not
-            // the first. In this case, use the previous segment's timestampt.
-            previousTimestamp = _segments[streamId][index - 1].timestampt;
-        } else {
-            // Otherwise, the current segment is the first, so use the start time as the previous timestampt.
-            previousTimestamp = _streams[streamId].startTime;
-        }
-
-        // Calculate how much time has passed since the segment started, and the total time of the segment.
-        SD59x18 elapsedSegmentTime = (currentTime - previousTimestamp).intoSD59x18();
-        SD59x18 totalSegmentTime = (currentSegmentTimestamp - previousTimestamp).intoSD59x18();
-
-        // Divide the elapsed segment time by the total duration of the segment.
-        SD59x18 elapsedSegmentTimePercentage = elapsedSegmentTime.div(totalSegmentTime);
-
-        // Calculate the streamed amount using the special formula.
-        SD59x18 multiplier = elapsedSegmentTimePercentage.pow(currentSegmentExponent);
-        SD59x18 segmentStreamedAmount = multiplier.mul(currentSegmentAmount);
-
-        // Although the segment streamed amount should never exceed the total segment amount, this condition is
-        // checked without asserting to avoid locking funds in case of a bug. If this situation occurs, the
-        // amount streamed in the segment is considered zero (except for past withdrawals), and the segment is
-        // effectively voided.
-        if (segmentStreamedAmount.gt(currentSegmentAmount)) {
-            return previousSegmentAmounts > _streams[streamId].amounts.withdrawn
-                ? previousSegmentAmounts
-                : _streams[streamId].amounts.withdrawn;
-        }
-
-        // Calculate the total streamed amount by adding the previous segment amounts and the amount streamed in
-        // the current segment. Casting to uint128 is safe due to the if statement above.
-        return previousSegmentAmounts + uint128(segmentStreamedAmount.intoUint256());
-    }
-
-    /// @dev Calculates the streamed amount for a stream with multiple segments.
-    ///
-    /// Notes:
-    ///
-    /// 1. Normalization to 18 decimals is not needed because there is no mix of amounts with different decimals.
-    /// 2. The stream's start time must be in the past so that the calculations below do not overflow.
-    /// 3. The stream's end time must be in the future so that the loop below does not panic with an "index out of
-    /// bounds" error.
     function _calculateStreamedAmountForMultipleSegments(uint256 streamId) internal view returns (uint128) {
         unchecked {
             uint40 currentTime = uint40(block.timestamp);
+            Lockup.Stream memory stream = _streams[streamId];
             LockupDynamic.Segment[] memory segments = _segments[streamId];
 
             // Sum the amounts in all segments that precede the current time.
             uint128 previousSegmentAmounts;
-            uint40 currentSegmentTimestamp = segments[0].timestampt;
+            uint40 currentSegmentTimestamp = segments[0].timestamp;
             uint256 index = 0;
             while (currentSegmentTimestamp < currentTime) {
                 previousSegmentAmounts += segments[index].amount;
                 index += 1;
-                currentSegmentTimestamp = segments[index].timestampt;
+                currentSegmentTimestamp = segments[index].timestamp;
             }
 
-            // Calculate the streamed amount for the current segment.
-            return _calculateStreamedAmountForCurrentSegment(streamId, index, previousSegmentAmounts);
+            // After exiting the loop, the current segment is at `index`.
+            SD59x18 currentSegmentAmount = segments[index].amount.intoSD59x18();
+            SD59x18 currentSegmentExponent = segments[index].exponent.intoSD59x18();
+            currentSegmentTimestamp = segments[index].timestamp;
+
+            uint40 previousTimestamp;
+            if (index > 0) {
+                // When the current segment's index is greater than or equal to 1, it implies that the segment is not
+                // the first. In this case, use the previous segment's timestamp.
+                previousTimestamp = segments[index - 1].timestamp;
+            } else {
+                // Otherwise, the current segment is the first, so use the start time as the previous timestamp.
+                previousTimestamp = stream.startTime;
+            }
+
+            // Calculate how much time has passed since the segment started, and the total time of the segment.
+            SD59x18 elapsedSegmentTime = (currentTime - previousTimestamp).intoSD59x18();
+            SD59x18 totalSegmentTime = (currentSegmentTimestamp - previousTimestamp).intoSD59x18();
+
+            // Divide the elapsed segment time by the total duration of the segment.
+            SD59x18 elapsedSegmentTimePercentage = elapsedSegmentTime.div(totalSegmentTime);
+
+            // Calculate the streamed amount using the special formula.
+            SD59x18 multiplier = elapsedSegmentTimePercentage.pow(currentSegmentExponent);
+            SD59x18 segmentStreamedAmount = multiplier.mul(currentSegmentAmount);
+
+            // Although the segment streamed amount should never exceed the total segment amount, this condition is
+            // checked without asserting to avoid locking funds in case of a bug. If this situation occurs, the
+            // amount streamed in the segment is considered zero (except for past withdrawals), and the segment is
+            // effectively voided.
+            if (segmentStreamedAmount.gt(currentSegmentAmount)) {
+                return previousSegmentAmounts > stream.amounts.withdrawn
+                    ? previousSegmentAmounts
+                    : stream.amounts.withdrawn;
+            }
+
+            // Calculate the total streamed amount by adding the previous segment amounts and the amount streamed in
+            // the current segment. Casting to uint128 is safe due to the if statement above.
+            return previousSegmentAmounts + uint128(segmentStreamedAmount.intoUint256());
         }
     }
 
@@ -324,30 +302,55 @@ contract SablierV2LockupDynamic is
         Lockup.CreateAmounts memory createAmounts =
             Helpers.checkAndCalculateFees(params.totalAmount, protocolFee, params.broker.fee, MAX_FEE);
 
-        uint40 endTime =
-            Helpers.checkSegments(params.segments, createAmounts.deposit, params.startTime, MAX_SEGMENT_COUNT);
+        // Checks: validate the user-provided parameters.
+        Helpers.checkCreateWithTimestamps(createAmounts.deposit, params.segments, MAX_SEGMENT_COUNT, params.startTime);
 
-        streamId = _create(
-            Lockup.CreateParams({
-                sender: params.sender,
-                recipient: params.recipient,
-                createAmounts: createAmounts,
-                asset: params.asset,
-                cancelable: params.cancelable,
-                transferable: params.transferable,
-                startTime: params.startTime,
-                endTime: endTime,
-                broker: params.broker
-            })
-        );
+        // Load the stream id in a variable.
+        streamId = nextStreamId;
 
-        uint256 segmentCount = params.segments.length;
+        // Effects: create the stream.
+        Lockup.Stream storage stream = _streams[streamId];
+        stream.amounts.deposited = createAmounts.deposit;
+        stream.asset = params.asset;
+        stream.isCancelable = params.cancelable;
+        stream.isTransferable = params.transferable;
+        stream.isStream = true;
+        stream.sender = params.sender;
 
-        // Effects: store the segments. Since Solidity lacks a syntax for copying arrays directly from
-        // memory to storage, a manual approach is necessary. See
-        // https://github.com/ethereum/solidity/issues/12783.
-        for (uint256 i = 0; i < segmentCount; ++i) {
-            _segments[streamId].push(params.segments[i]);
+        unchecked {
+            // The segment count cannot be zero at this point.
+            uint256 segmentCount = params.segments.length;
+            stream.endTime = params.segments[segmentCount - 1].timestamp;
+            stream.startTime = params.startTime;
+
+            // Effects: store the segments. Since Solidity lacks a syntax for copying arrays directly from
+            // memory to storage, a manual approach is necessary. See https://github.com/ethereum/solidity/issues/12783.
+            for (uint256 i = 0; i < segmentCount; ++i) {
+                _segments[streamId].push(params.segments[i]);
+            }
+
+            // Effects: bump the next stream id and record the protocol fee.
+            // Using unchecked arithmetic because these calculations cannot realistically overflow, ever.
+            nextStreamId = streamId + 1;
+            protocolRevenues[params.asset] = protocolRevenues[params.asset] + createAmounts.protocolFee;
+        }
+
+        // Effects: mint the NFT to the recipient.
+        _mint({ to: params.recipient, tokenId: streamId });
+
+        // Interactions: transfer the deposit and the protocol fee.
+        // Using unchecked arithmetic because the deposit and the protocol fee are bounded by the total amount.
+        unchecked {
+            params.asset.safeTransferFrom({
+                from: msg.sender,
+                to: address(this),
+                value: createAmounts.deposit + createAmounts.protocolFee
+            });
+        }
+
+        // Interactions: pay the broker fee, if not zero.
+        if (createAmounts.brokerFee > 0) {
+            params.asset.safeTransferFrom({ from: msg.sender, to: params.broker.account, value: createAmounts.brokerFee });
         }
 
         // Log the newly created stream.
@@ -361,7 +364,7 @@ contract SablierV2LockupDynamic is
             cancelable: params.cancelable,
             transferable: params.transferable,
             segments: params.segments,
-            startTime: params.startTime,
+            range: LockupDynamic.Range({ start: stream.startTime, end: stream.endTime }),
             broker: params.broker.account
         });
     }
