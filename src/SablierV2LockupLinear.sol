@@ -41,7 +41,7 @@ contract SablierV2LockupLinear is
     using SafeERC20 for IERC20;
 
     /*//////////////////////////////////////////////////////////////////////////
-                                  PRIVATE STORAGE
+                                  STATE VARIABLES
     //////////////////////////////////////////////////////////////////////////*/
 
     /// @dev Cliff times mapped by stream id.
@@ -96,14 +96,28 @@ contract SablierV2LockupLinear is
         view
         override
         notNull(streamId)
-        returns (Lockup.Stream memory stream)
+        returns (LockupLinear.Stream memory stream)
     {
-        stream = _streams[streamId];
+        Lockup.Stream memory lockupStream = _streams[streamId];
 
         // Settled streams cannot be canceled.
         if (_statusOf(streamId) == Lockup.Status.SETTLED) {
-            stream.isCancelable = false;
+            lockupStream.isCancelable = false;
         }
+
+        stream = LockupLinear.Stream({
+            amounts: lockupStream.amounts,
+            asset: lockupStream.asset,
+            cliffTime: _cliffs[streamId],
+            endTime: lockupStream.endTime,
+            isCancelable: lockupStream.isCancelable,
+            isTransferable: lockupStream.isTransferable,
+            isDepleted: lockupStream.isDepleted,
+            isStream: lockupStream.isStream,
+            sender: lockupStream.sender,
+            startTime: lockupStream.startTime,
+            wasCanceled: lockupStream.wasCanceled
+        });
     }
 
     function streamedAmountOf(uint256 streamId)

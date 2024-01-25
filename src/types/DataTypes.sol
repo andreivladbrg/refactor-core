@@ -67,18 +67,19 @@ library Lockup {
         DEPLETED
     }
 
-    struct CreateParams {
-        address sender;
-        address recipient;
-        CreateAmounts createAmounts;
-        IERC20 asset;
-        bool cancelable;
-        bool transferable;
-        uint40 startTime;
-        uint40 endTime;
-        Broker broker;
-    }
-
+    /// @notice A common data structure to be stored in all contracts inheriting {SablierV2Lockup}.
+    /// @dev The fields are arranged like this to save gas via tight variable packing.
+    /// @param sender The address streaming the assets, with the ability to cancel the stream.
+    /// @param startTime The Unix timestamp indicating the stream's start.
+    /// @param endTime The Unix timestamp indicating the stream's end.
+    /// @param isCancelable Boolean indicating if the stream is cancelable.
+    /// @param wasCanceled Boolean indicating if the stream was canceled.
+    /// @param asset The contract address of the ERC-20 asset used for streaming.
+    /// @param isDepleted Boolean indicating if the stream is depleted.
+    /// @param isStream Boolean indicating if the struct entity exists.
+    /// @param isTransferable Boolean indicating if the stream NFT is transferable.
+    /// @param amounts Struct containing the deposit, withdrawn, and refunded amounts, all denoted in units of the
+    /// asset's decimals.
     struct Stream {
         // slot 0
         address sender;
@@ -98,7 +99,7 @@ library Lockup {
 
 /// @notice Namespace for the structs used in {SablierV2LockupDynamic}.
 library LockupDynamic {
-    /// @notice Struct encapsulating the parameters for the {SablierV2LockupDynamic.createWithDurations} function.
+    /// @notice Struct enc  apsulating the parameters for the {SablierV2LockupDynamic.createWithDurations} function.
     /// @param sender The address streaming the assets, with the ability to cancel the stream. It doesn't have to be the
     /// same as `msg.sender`.
     /// @param recipient The address receiving the assets.
@@ -177,35 +178,20 @@ library LockupDynamic {
         uint40 duration;
     }
 
-    /// @notice Lockup Dynamic stream.
-    /// @dev The fields are arranged like this to save gas via tight variable packing.
-    /// @param sender The address streaming the assets, with the ability to cancel the stream.
-    /// @param startTime The Unix timestamp indicating the stream's start.
-    /// @param endTime The Unix timestamp indicating the stream's end.
-    /// @param isCancelable Boolean indicating if the stream is cancelable.
-    /// @param wasCanceled Boolean indicating if the stream was canceled.
-    /// @param asset The contract address of the ERC-20 asset used for streaming.
-    /// @param isDepleted Boolean indicating if the stream is depleted.
-    /// @param isStream Boolean indicating if the struct entity exists.
-    /// @param isTransferable Boolean indicating if the stream NFT is transferable.
-    /// @param amounts Struct containing the deposit, withdrawn, and refunded amounts, all denoted in units of the
-    /// asset's decimals.
-    /// @param segments Segments used to compose the custom streaming curve.
+    /// @notice Struct encapsulating all the data for a specific id, so that an integrator can obatain all informations
+    /// within one call to our contract.
+    /// @dev It cointains the same data as the `Lockup.Stream` struct, plus the segments.
     struct Stream {
-        // slot 0
         address sender;
         uint40 startTime;
         uint40 endTime;
         bool isCancelable;
         bool wasCanceled;
-        // slot 1
         IERC20 asset;
         bool isDepleted;
         bool isStream;
         bool isTransferable;
-        // slot 2 and 3
         Lockup.Amounts amounts;
-        // slots [4..n]
         Segment[] segments;
     }
 }
@@ -277,34 +263,20 @@ library LockupLinear {
         uint40 end;
     }
 
-    /// @notice Lockup Linear stream.
-    /// @dev The fields are arranged like this to save gas via tight variable packing.
-    /// @param sender The address streaming the assets, with the ability to cancel the stream.
-    /// @param startTime The Unix timestamp indicating the stream's start.
-    /// @param cliffTime The Unix timestamp indicating the cliff period's end.
-    /// @param isCancelable Boolean indicating if the stream is cancelable.
-    /// @param wasCanceled Boolean indicating if the stream was canceled.
-    /// @param asset The contract address of the ERC-20 asset used for streaming.
-    /// @param endTime The Unix timestamp indicating the stream's end.
-    /// @param isDepleted Boolean indicating if the stream is depleted.
-    /// @param isStream Boolean indicating if the struct entity exists.
-    /// @param isTransferable Boolean indicating if the stream NFT is transferable.
-    /// @param amounts Struct containing the deposit, withdrawn, and refunded amounts, all denoted in units of the
-    /// asset's decimals.
+    /// @notice Struct encapsulating all the data for a specific id, so that an integrator can obatain all informations
+    /// within one call to our contract.
+    /// @dev It cointains the same data as the `Lockup.Stream` struct, plus the range.
     struct Stream {
-        // slot 0
         address sender;
         uint40 startTime;
-        uint40 cliffTime;
         bool isCancelable;
         bool wasCanceled;
-        // slot 1
         IERC20 asset;
         uint40 endTime;
         bool isDepleted;
         bool isStream;
         bool isTransferable;
-        // slot 2 and 3
         Lockup.Amounts amounts;
+        uint40 cliffTime;
     }
 }

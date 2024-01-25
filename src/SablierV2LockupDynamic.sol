@@ -45,7 +45,7 @@ contract SablierV2LockupDynamic is
     using SafeERC20 for IERC20;
 
     /*//////////////////////////////////////////////////////////////////////////
-                                  PUBLIC CONSTANTS
+                                  STATE VARIABLES
     //////////////////////////////////////////////////////////////////////////*/
 
     /// @inheritdoc ISablierV2LockupDynamic
@@ -108,14 +108,28 @@ contract SablierV2LockupDynamic is
         view
         override
         notNull(streamId)
-        returns (Lockup.Stream memory stream)
+        returns (LockupDynamic.Stream memory stream)
     {
-        stream = _streams[streamId];
+        Lockup.Stream memory lockupStream = _streams[streamId];
 
         // Settled streams cannot be canceled.
         if (_statusOf(streamId) == Lockup.Status.SETTLED) {
-            stream.isCancelable = false;
+            lockupStream.isCancelable = false;
         }
+
+        stream = LockupDynamic.Stream({
+            amounts: lockupStream.amounts,
+            asset: lockupStream.asset,
+            endTime: lockupStream.endTime,
+            isCancelable: lockupStream.isCancelable,
+            isTransferable: lockupStream.isTransferable,
+            isDepleted: lockupStream.isDepleted,
+            isStream: lockupStream.isStream,
+            sender: lockupStream.sender,
+            segments: _segments[streamId],
+            startTime: lockupStream.startTime,
+            wasCanceled: lockupStream.wasCanceled
+        });
     }
 
     /// @inheritdoc ISablierV2LockupDynamic
