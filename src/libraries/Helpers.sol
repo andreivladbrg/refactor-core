@@ -59,34 +59,34 @@ library Helpers {
         }
     }
 
-    /// @dev Checks that the segment array counts match, and then adjusts the segments by calculating the milestones.
-    function checkDeltasAndCalculateMilestones(LockupDynamic.SegmentWithDelta[] memory segments)
+    /// @dev Checks that the segment array counts match, and then adjusts the segments by calculating the timestampts.
+    function checkDurationsAndCalculateTimestamps(LockupDynamic.SegmentWithDuration[] memory segments)
         internal
         view
-        returns (LockupDynamic.Segment[] memory segmentsWithMilestones)
+        returns (LockupDynamic.Segment[] memory segmentsWithTimestamps)
     {
         uint256 segmentCount = segments.length;
-        segmentsWithMilestones = new LockupDynamic.Segment[](segmentCount);
+        segmentsWithTimestamps = new LockupDynamic.Segment[](segmentCount);
 
         // Make the current time the stream's start time.
         uint40 startTime = uint40(block.timestamp);
 
-        // It is safe to use unchecked arithmetic because {_createWithMilestone} will nonetheless check the soundness
-        // of the calculated segment milestones.
+        // It is safe to use unchecked arithmetic because {_createWithTimestamp} will nonetheless check the soundness
+        // of the calculated segment timestampts.
         unchecked {
-            // Precompute the first segment because of the need to add the start time to the first segment delta.
-            segmentsWithMilestones[0] = LockupDynamic.Segment({
+            // Precompute the first segment because of the need to add the start time to the first segment duration.
+            segmentsWithTimestamps[0] = LockupDynamic.Segment({
                 amount: segments[0].amount,
                 exponent: segments[0].exponent,
-                milestone: startTime + segments[0].delta
+                timestampt: startTime + segments[0].duration
             });
 
-            // Copy the segment amounts and exponents, and calculate the segment milestones.
+            // Copy the segment amounts and exponents, and calculate the segment timestampts.
             for (uint256 i = 1; i < segmentCount; ++i) {
-                segmentsWithMilestones[i] = LockupDynamic.Segment({
+                segmentsWithTimestamps[i] = LockupDynamic.Segment({
                     amount: segments[i].amount,
                     exponent: segments[i].exponent,
-                    milestone: segmentsWithMilestones[i - 1].milestone + segments[i].delta
+                    timestampt: segmentsWithTimestamps[i - 1].timestampt + segments[i].duration
                 });
             }
         }
@@ -98,9 +98,9 @@ library Helpers {
 
     /// @dev Checks that:
     ///
-    /// 1. The first milestone is strictly greater than the start time.
-    /// 2. The milestones are ordered chronologically.
-    /// 3. There are no duplicate milestones.
+    /// 1. The first timestampt is strictly greater than the start time.
+    /// 2. The timestampts are ordered chronologically.
+    /// 3. There are no duplicate timestampts.
     /// 4. The deposit amount is equal to the sum of all segment amounts.
     function checkSegments(
         LockupDynamic.Segment[] memory segments,
@@ -123,36 +123,36 @@ library Helpers {
             revert Errors.SablierV2LockupDynamic_SegmentCountTooHigh(segmentCount);
         }
 
-        // Checks: the start time is strictly less than the first segment milestone.
-        if (startTime >= segments[0].milestone) {
-            revert Errors.SablierV2LockupDynamic_StartTimeNotLessThanFirstSegmentMilestone(
-                startTime, segments[0].milestone
+        // Checks: the start time is strictly less than the first segment timestampt.
+        if (startTime >= segments[0].timestampt) {
+            revert Errors.SablierV2LockupDynamic_StartTimeNotLessThanFirstSegmentTimestamp(
+                startTime, segments[0].timestampt
             );
         }
 
         // Pre-declare the variables needed in the for loop.
         uint128 segmentAmountsSum;
-        uint40 currentMilestone;
-        uint40 previousMilestone;
+        uint40 currentTimestamp;
+        uint40 previousTimestamp;
 
         // Iterate over the segments to:
         //
         // 1. Calculate the sum of all segment amounts.
-        // 2. Check that the milestones are ordered.
+        // 2. Check that the timestampts are ordered.
         for (uint256 index = 0; index < segmentCount; ++index) {
             // Add the current segment amount to the sum.
             segmentAmountsSum += segments[index].amount;
 
-            // Checks: the current milestone is strictly greater than the previous milestone.
-            currentMilestone = segments[index].milestone;
-            if (currentMilestone <= previousMilestone) {
-                revert Errors.SablierV2LockupDynamic_SegmentMilestonesNotOrdered(
-                    index, previousMilestone, currentMilestone
+            // Checks: the current timestampt is strictly greater than the previous timestampt.
+            currentTimestamp = segments[index].timestampt;
+            if (currentTimestamp <= previousTimestamp) {
+                revert Errors.SablierV2LockupDynamic_SegmentTimestampsNotOrdered(
+                    index, previousTimestamp, currentTimestamp
                 );
             }
 
-            // Make the current milestone the previous milestone of the next loop iteration.
-            previousMilestone = currentMilestone;
+            // Make the current timestampt the previous timestampt of the next loop iteration.
+            previousTimestamp = currentTimestamp;
         }
 
         // Checks: the deposit amount is equal to the segment amounts sum.
@@ -162,6 +162,6 @@ library Helpers {
             );
         }
 
-        return currentMilestone;
+        return currentTimestamp;
     }
 }

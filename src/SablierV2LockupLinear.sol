@@ -132,15 +132,15 @@ contract SablierV2LockupLinear is
         range.start = uint40(block.timestamp);
 
         // Calculate the cliff time and the end time. It is safe to use unchecked arithmetic because
-        // {_createWithRange} will nonetheless check that the end time is greater than the cliff time,
+        // {_createWithTimestampts} will nonetheless check that the end time is greater than the cliff time,
         // and also that the cliff time is greater than or equal to the start time.
         unchecked {
             range.cliff = range.start + params.durations.cliff;
             range.end = range.start + params.durations.total;
         }
         // Checks, Effects and Interactions: create the stream.
-        streamId = _createWithRange(
-            LockupLinear.CreateWithRange({
+        streamId = _createWithTimestampts(
+            LockupLinear.CreateWithTimestampts({
                 sender: params.sender,
                 recipient: params.recipient,
                 totalAmount: params.totalAmount,
@@ -154,14 +154,14 @@ contract SablierV2LockupLinear is
     }
 
     /// @inheritdoc ISablierV2LockupLinear
-    function createWithRange(LockupLinear.CreateWithRange calldata params)
+    function createWithTimestampts(LockupLinear.CreateWithTimestampts calldata params)
         external
         override
         noDelegateCall
         returns (uint256 streamId)
     {
         // Checks, Effects and Interactions: create the stream.
-        streamId = _createWithRange(params);
+        streamId = _createWithTimestampts(params);
     }
 
     /*//////////////////////////////////////////////////////////////////////////
@@ -216,7 +216,10 @@ contract SablierV2LockupLinear is
                            INTERNAL NON-CONSTANT FUNCTIONS
     //////////////////////////////////////////////////////////////////////////*/
 
-    function _createWithRange(LockupLinear.CreateWithRange memory params) internal returns (uint256 streamId) {
+    function _createWithTimestampts(LockupLinear.CreateWithTimestampts memory params)
+        internal
+        returns (uint256 streamId)
+    {
         // Checks: the start time is less than or equal to the cliff time.
         if (params.range.start > params.range.cliff) {
             revert Errors.SablierV2LockupLinear_StartTimeGreaterThanCliffTime(params.range.start, params.range.cliff);

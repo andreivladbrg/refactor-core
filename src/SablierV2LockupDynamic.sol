@@ -133,18 +133,18 @@ contract SablierV2LockupDynamic is
     //////////////////////////////////////////////////////////////////////////*/
 
     /// @inheritdoc ISablierV2LockupDynamic
-    function createWithDeltas(LockupDynamic.CreateWithDeltas calldata params)
+    function createWithDurations(LockupDynamic.CreateWithDurations calldata params)
         external
         override
         noDelegateCall
         returns (uint256 streamId)
     {
-        // Checks: check the deltas and generate the canonical segments.
-        LockupDynamic.Segment[] memory segments = Helpers.checkDeltasAndCalculateMilestones(params.segments);
+        // Checks: check the durations and generate the canonical segments.
+        LockupDynamic.Segment[] memory segments = Helpers.checkDurationsAndCalculateTimestamps(params.segments);
 
         // Checks, Effects and Interactions: create the stream.
-        streamId = _createWithMilestones(
-            LockupDynamic.CreateWithMilestones({
+        streamId = _createWithTimestamps(
+            LockupDynamic.CreateWithTimestamps({
                 sender: params.sender,
                 recipient: params.recipient,
                 totalAmount: params.totalAmount,
@@ -159,14 +159,14 @@ contract SablierV2LockupDynamic is
     }
 
     /// @inheritdoc ISablierV2LockupDynamic
-    function createWithMilestones(LockupDynamic.CreateWithMilestones calldata params)
+    function createWithTimestamps(LockupDynamic.CreateWithTimestamps calldata params)
         external
         override
         noDelegateCall
         returns (uint256 streamId)
     {
         // Checks, Effects and Interactions: create the stream.
-        streamId = _createWithMilestones(params);
+        streamId = _createWithTimestamps(params);
     }
 
     /*//////////////////////////////////////////////////////////////////////////
@@ -210,21 +210,21 @@ contract SablierV2LockupDynamic is
         // After exiting the loop, the current segment is at `index`.
         SD59x18 currentSegmentAmount = _segments[streamId][index].amount.intoSD59x18();
         SD59x18 currentSegmentExponent = _segments[streamId][index].exponent.intoSD59x18();
-        uint40 currentSegmentMilestone = _segments[streamId][index].milestone;
+        uint40 currentSegmentTimestamp = _segments[streamId][index].timestampt;
 
-        uint40 previousMilestone;
+        uint40 previousTimestamp;
         if (index > 0) {
             // When the current segment's index is greater than or equal to 1, it implies that the segment is not
-            // the first. In this case, use the previous segment's milestone.
-            previousMilestone = _segments[streamId][index - 1].milestone;
+            // the first. In this case, use the previous segment's timestampt.
+            previousTimestamp = _segments[streamId][index - 1].timestampt;
         } else {
-            // Otherwise, the current segment is the first, so use the start time as the previous milestone.
-            previousMilestone = _streams[streamId].startTime;
+            // Otherwise, the current segment is the first, so use the start time as the previous timestampt.
+            previousTimestamp = _streams[streamId].startTime;
         }
 
         // Calculate how much time has passed since the segment started, and the total time of the segment.
-        SD59x18 elapsedSegmentTime = (currentTime - previousMilestone).intoSD59x18();
-        SD59x18 totalSegmentTime = (currentSegmentMilestone - previousMilestone).intoSD59x18();
+        SD59x18 elapsedSegmentTime = (currentTime - previousTimestamp).intoSD59x18();
+        SD59x18 totalSegmentTime = (currentSegmentTimestamp - previousTimestamp).intoSD59x18();
 
         // Divide the elapsed segment time by the total duration of the segment.
         SD59x18 elapsedSegmentTimePercentage = elapsedSegmentTime.div(totalSegmentTime);
@@ -263,12 +263,12 @@ contract SablierV2LockupDynamic is
 
             // Sum the amounts in all segments that precede the current time.
             uint128 previousSegmentAmounts;
-            uint40 currentSegmentMilestone = segments[0].milestone;
+            uint40 currentSegmentTimestamp = segments[0].timestampt;
             uint256 index = 0;
-            while (currentSegmentMilestone < currentTime) {
+            while (currentSegmentTimestamp < currentTime) {
                 previousSegmentAmounts += segments[index].amount;
                 index += 1;
-                currentSegmentMilestone = segments[index].milestone;
+                currentSegmentTimestamp = segments[index].timestampt;
             }
 
             // Calculate the streamed amount for the current segment.
@@ -312,7 +312,7 @@ contract SablierV2LockupDynamic is
     //////////////////////////////////////////////////////////////////////////*/
 
     /// @dev See the documentation for the user-facing functions that call this internal function.
-    function _createWithMilestones(LockupDynamic.CreateWithMilestones memory params)
+    function _createWithTimestamps(LockupDynamic.CreateWithTimestamps memory params)
         internal
         returns (uint256 streamId)
     {
@@ -327,29 +327,27 @@ contract SablierV2LockupDynamic is
         uint40 endTime =
             Helpers.checkSegments(params.segments, createAmounts.deposit, params.startTime, MAX_SEGMENT_COUNT);
 
-        unchecked {
-            streamId = _create(
-                Lockup.CreateParams({
-                    sender: params.sender,
-                    recipient: params.recipient,
-                    createAmounts: createAmounts,
-                    asset: params.asset,
-                    cancelable: params.cancelable,
-                    transferable: params.transferable,
-                    startTime: params.startTime,
-                    endTime: endTime,
-                    broker: params.broker
-                })
-            );
+        streamId = _create(
+            Lockup.CreateParams({
+                sender: params.sender,
+                recipient: params.recipient,
+                createAmounts: createAmounts,
+                asset: params.asset,
+                cancelable: params.cancelable,
+                transferable: params.transferable,
+                startTime: params.startTime,
+                endTime: endTime,
+                broker: params.broker
+            })
+        );
 
-            uint256 segmentCount = params.segments.length;
+        uint256 segmentCount = params.segments.length;
 
-            // Effects: store the segments. Since Solidity lacks a syntax for copying arrays directly from
-            // memory to storage, a manual approach is necessary. See
-            // https://github.com/ethereum/solidity/issues/12783.
-            for (uint256 i = 0; i < segmentCount; ++i) {
-                _segments[streamId].push(params.segments[i]);
-            }
+        // Effects: store the segments. Since Solidity lacks a syntax for copying arrays directly from
+        // memory to storage, a manual approach is necessary. See
+        // https://github.com/ethereum/solidity/issues/12783.
+        for (uint256 i = 0; i < segmentCount; ++i) {
+            _segments[streamId].push(params.segments[i]);
         }
 
         // Log the newly created stream.

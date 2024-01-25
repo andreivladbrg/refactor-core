@@ -91,25 +91,27 @@ interface ISablierV2LockupDynamic is ISablierV2Lockup {
     //////////////////////////////////////////////////////////////////////////*/
 
     /// @notice Creates a stream by setting the start time to `block.timestamp`, and the end time to the sum of
-    /// `block.timestamp` and all specified time deltas. The segment milestones are derived from these
-    /// deltas. The stream is funded by `msg.sender` and is wrapped in an ERC-721 NFT.
+    /// `block.timestamp` and all specified time durations. The segment timestampts are derived from these
+    /// durations. The stream is funded by `msg.sender` and is wrapped in an ERC-721 NFT.
     ///
     /// @dev Emits a {Transfer} and {CreateLockupDynamicStream} event.
     ///
     /// Requirements:
-    /// - All requirements in {createWithMilestones} must be met for the calculated parameters.
+    /// - All requirements in {createWithTimestamps} must be met for the calculated parameters.
     ///
     /// @param params Struct encapsulating the function parameters, which are documented in {DataTypes}.
     /// @return streamId The id of the newly created stream.
-    function createWithDeltas(LockupDynamic.CreateWithDeltas calldata params) external returns (uint256 streamId);
+    function createWithDurations(LockupDynamic.CreateWithDurations calldata params)
+        external
+        returns (uint256 streamId);
 
-    /// @notice Creates a stream with the provided segment milestones, implying the end time from the last milestone.
+    /// @notice Creates a stream with the provided segment timestampts, implying the end time from the last timestampt.
     /// The stream is funded by `msg.sender` and is wrapped in an ERC-721 NFT.
     ///
     /// @dev Emits a {Transfer} and {CreateLockupDynamicStream} event.
     ///
     /// Notes:
-    /// - As long as the segment milestones are arranged in ascending order, it is not an error for some
+    /// - As long as the segment timestampts are arranged in ascending order, it is not an error for some
     /// of them to be in the past.
     ///
     /// Requirements:
@@ -117,16 +119,16 @@ interface ISablierV2LockupDynamic is ISablierV2Lockup {
     /// - `params.totalAmount` must be greater than zero.
     /// - If set, `params.broker.fee` must not be greater than `MAX_FEE`.
     /// - `params.segments` must have at least one segment, but not more than `MAX_SEGMENT_COUNT`.
-    /// - `params.startTime` must be less than the first segment's milestone.
-    /// - The segment milestones must be arranged in ascending order.
-    /// - The last segment milestone (i.e. the stream's end time) must be in the future.
+    /// - `params.startTime` must be less than the first segment's timestampt.
+    /// - The segment timestampts must be arranged in ascending order.
+    /// - The last segment timestampt (i.e. the stream's end time) must be in the future.
     /// - The sum of the segment amounts must equal the deposit amount.
     /// - `params.recipient` must not be the zero address.
     /// - `msg.sender` must have allowed this contract to spend at least `params.totalAmount` assets.
     ///
     /// @param params Struct encapsulating the function parameters, which are documented in {DataTypes}.
     /// @return streamId The id of the newly created stream.
-    function createWithMilestones(LockupDynamic.CreateWithMilestones calldata params)
+    function createWithTimestamps(LockupDynamic.CreateWithTimestamps calldata params)
         external
         returns (uint256 streamId);
 }
